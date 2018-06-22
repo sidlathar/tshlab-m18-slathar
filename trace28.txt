@@ -1,0 +1,32 @@
+#
+# trace28.txt - Signal a job right after it has been reaped.
+#
+SHELLSYNC waitpid
+
+/bin/echo -e tsh\076 ./myspin1
+NEXT
+
+./myspin1
+
+WAIT
+SIGNAL
+SHELLWAIT
+SIGTSTP
+SHELLSIGNAL
+
+NEXT
+
+/bin/echo -e tsh\0746 ./myspin1
+NEXT
+./myspin1
+
+WAIT
+SIGNAL
+SHELLWAIT
+SIGINT
+SHELLSIGNAL
+
+NEXT
+
+quit
+

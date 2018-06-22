@@ -1,0 +1,20 @@
+*.o
+*~
+sdriver
+runtrace
+tsh
+myspin1
+myspin2
+myenv
+myintp
+myints
+mytstpp
+mytstps
+mysplit
+mysplitp
+mycat
+mysleepnprint
+
+# If key.txt is enabled
+handin.tar
+key.txt

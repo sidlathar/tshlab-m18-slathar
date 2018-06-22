@@ -1,0 +1,27 @@
+#
+# trace29.txt - Signal and end a background job in the middle of a fg command
+#
+SHELLSYNC get_pid_of_job
+
+/bin/echo -e tsh\076 ./myspin1 \046
+NEXT
+
+./myspin1 &
+NEXT
+
+WAIT
+/bin/echo -e tsh\076 jobs
+NEXT
+jobs
+NEXT
+/bin/echo -e tsh\076 fg %1
+NEXT
+fg %1
+SHELLWAIT
+SIGNAL
+SHELLSIGNAL
+
+NEXT
+
+quit
+

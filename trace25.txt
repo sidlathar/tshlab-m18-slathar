@@ -1,0 +1,19 @@
+#
+# trace25.txt - Check that the fg command waits for the program to finish.
+#
+/bin/echo -e tsh\076 ./mysleepnprint
+NEXT
+./mysleepnprint
+NEXT
+/bin/echo -e tsh\076 jobs
+NEXT
+jobs
+NEXT
+
+/bin/echo -e tsh\076 fg %1
+NEXT
+fg %1
+NEXT
+
+quit
+

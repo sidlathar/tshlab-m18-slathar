@@ -1,0 +1,12 @@
+#
+# trace26.txt - Run a background job that kills itself
+#
+/bin/echo -e tsh\076 ./myints \046
+NEXT
+./myints &
+NEXT
+/bin/sleep 1
+NEXT
+/bin/echo -e tsh\076 quit
+NEXT
+quit
