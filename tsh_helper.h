@@ -17,10 +17,10 @@
 #include <stdbool.h>
 
 /* Misc manifest constants */
-#define MAXLINE_TSH    1024   /* max line size */
-#define MAXARGS     128   /* max args on a command line */
-#define MAXJOBS      16   /* max jobs at any point in time */
-#define MAXJID    1<<16   /* max job ID */
+#define MAXLINE_TSH  1024   /* max line size */
+#define MAXARGS       128   /* max args on a command line */
+#define MAXJOBS        16   /* max jobs at any point in time */
+#define MAXJID      1<<16   /* max job ID */
 
 struct job_t;
 
@@ -87,7 +87,7 @@ extern struct job_t job_list[MAXJOBS];  // The job list
 
 /*
  * parseline takes in the command line and pointer to a token struct.
- * It parses the command line and populates the token struct
+ * It parses the command line and populates the token struct.
  * It returns the following values of enumerated type parseline_return:
  *   PARSELINE_EMPTY        if the command line is empty
  *   PARSELINE_BG           if the user has requested a BG job
@@ -108,10 +108,10 @@ void sigquit_handler(int sig);
 void init_job_list();
 
 /*
- * add_job takes in a job list, a process ID, a job state, and the command line
- * and adds the pid, job ID, state, and cmdline into a job struct in
- * the job list. Returns true on success, and false otherwise.
- * See the job_t struct above for more details.
+ * add_job takes in a process ID, a job state, and the command line of the job
+ * and adds the pid, job ID, state, and cmdline into a job struct in the job
+ * list. cmdline must be at most MAXLINE_TSH-2 in length. It returns true on
+ * success, and false otherwise. See the job_t struct above for more details.
  */
 bool add_job(pid_t pid, job_state state,
             const char *cmdline);
@@ -123,40 +123,38 @@ bool add_job(pid_t pid, job_state state,
 bool delete_job(pid_t pid);
 
 /*
- * fg_pid returns the process ID of the foreground job in the
- * supplied job list.
+ * fg_pid returns the process ID of the foreground job in the job list.
  */
 pid_t fg_pid();
 
 /*
- * find_job_with_pid takes in a job list and a process ID, and returns either
- * a pointer the job struct with the respective process ID, or
- * NULL if a job with the given process ID does not exist.
+ * find_job_with_pid takes in a process ID, and returns either a pointer to
+ * the job struct with the respective process ID, or NULL if a job with the
+ * given process ID does not exist.
  */
 struct job_t *find_job_with_pid(pid_t pid);
 
 /*
- * find_job_with_jid takes in a job list and a job ID, and returns either
- * a pointer the job struct with the respective job ID, or
- * NULL if a job with the given job ID does not exist.
+ * find_job_with_jid takes in a job ID, and returns either a pointer the job
+ * struct with the respective job ID, or NULL if a job with the given job ID
+ * does not exist.
  */
 struct job_t *find_job_with_jid(int jid);
 
 /*
- * find_jid_by_pid converts the supplied process ID into its corresponding
- * job ID in the job list.
- *
- * returns 0 if no such job exist in teh job_list
+ * find_jid_by_pid takes in a process ID, and finds the job with that process
+ * ID in the job list. It returns the job ID of the corresponding job, or
+ * 0 if a job with the given process ID does not exist.
  */
 int find_jid_by_pid(pid_t pid);
 
 /*
- * list_jobs prints the job list.
+ * list_jobs prints the job list to standard output.
  */
 void list_jobs(int output_fd);
 
 /*
- * usage prints the usage of the tiny shell.
+ * usage prints usage instructions for the tiny shell.
  */
 void usage(void);
 
