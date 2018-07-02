@@ -334,11 +334,11 @@ int runtrace(char *tracefile) {
     status = system(buf);
 
     /* Filtered output files were different */
-    if (status != 0) {
+    if (status == 1) {
         sprintf(buf, "diff %s %s > %s\n",
                 test_raw_outfile, ref_raw_outfile, diff_raw_outfile);
         ret = system(buf);
-        if (ret != 0) {
+        if (ret != 0 && ret != 1) {
             printf("sdriver unable to run %s, exiting\n", buf);
             delete_tmpfiles();
             exit(1);
@@ -361,6 +361,11 @@ int runtrace(char *tracefile) {
         printf("\n");
 
         return 0;
+    } else if(status != 0) {
+        printf("sdriver unable to run %s, system returned %d, exiting\n",
+               buf, status);
+        delete_tmpfiles();
+        exit(1);
     }
 
     /* Filtered output files were identical */
