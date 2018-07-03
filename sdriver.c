@@ -332,13 +332,22 @@ int runtrace(char *tracefile) {
     sprintf(buf, "diff %s %s > %s\n",
             test_filtered_outfile, ref_filtered_outfile, diff_filtered_outfile);
     status = system(buf);
+    if (status == -1) {
+        perror("system");
+        delete_tmpfiles();
+        exit(1);
+    }
 
     /* Filtered output files were different */
-    if (status == 1) {
+    else if (WIFEXITED(status) && WEXITSTATUS(status) == 1) {
         sprintf(buf, "diff %s %s > %s\n",
                 test_raw_outfile, ref_raw_outfile, diff_raw_outfile);
         ret = system(buf);
-        if (ret != 0 && ret != 1) {
+        if (ret == -1) {
+            perror("system");
+            delete_tmpfiles();
+            exit(1);
+        } else if (!(WIFEXITED(ret) && WEXITSTATUS(ret) == 1)) {
             printf("sdriver unable to run %s, exiting\n", buf);
             delete_tmpfiles();
             exit(1);
@@ -361,28 +370,34 @@ int runtrace(char *tracefile) {
         printf("\n");
 
         return 0;
-    } else if(status != 0) {
-        printf("sdriver unable to run %s, system returned %d, exiting\n",
+    }
+
+    /* Filtered output files were identical */
+    else if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+        if (verbose) {
+            printf("Success: The test and reference outputs for %s matched!\n",
+                   tracefile);
+        }
+        if (verbose > 1) {
+            printf("Test output:\n");
+            emit_file(test_raw_outfile);
+            printf("\n");
+            printf("Reference output:\n");
+            fflush(stdout);
+            emit_file(ref_raw_outfile);
+            printf("\n");
+        }
+
+        return 1;
+    }
+
+    /* Other abnormal termination of diff command */
+    else {
+        printf("sdriver unable to run %s, exit status %d, exiting\n",
                buf, status);
         delete_tmpfiles();
         exit(1);
     }
-
-    /* Filtered output files were identical */
-    if (verbose) {
-        printf("Success: The test and reference outputs for %s matched!\n", tracefile);
-    }
-    if (verbose > 1) {
-        printf("Test output:\n");
-        emit_file(test_raw_outfile);
-        printf("\n");
-        printf("Reference output:\n");
-        fflush(stdout);
-        emit_file(ref_raw_outfile);
-        printf("\n");
-    }
-
-    return 1;
 }
 
 /*
