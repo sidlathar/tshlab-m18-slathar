@@ -49,7 +49,8 @@ void sigtstp_handler(int sig);
 void sigint_handler(int sig);
 void sigquit_handler(int sig);
 
-
+/* Job list */
+struct job_t job_list[MAXLJOBS];
 
 /*
  * <Write main's function header documentation. What does main do?>
@@ -154,12 +155,35 @@ void eval(const char *cmdline) {
     parseline_return parse_result;
     struct cmdline_tokens token;
 
-    // Parse command line
-    parse_result = parseline(cmdline, &token);
+    /* Parse command line */
+    parse_result = parseline(cmdline, &token); 
 
-    if (parse_result == PARSELINE_ERROR || parse_result == PARSELINE_EMPTY) {
+    /* Check for valid parse */
+    if (parse_result == PARSELINE_ERROR || parse_result == PARSELINE_EMPTY) 
+    {
         return;
     }
+    /* Not a builtin command */
+    else if(token -> builtin == BUILTIN_NONE)
+    {
+        /* Make Blocking List from empty list*/
+        sigset_t proc_mask;
+        sigemptyset(&proc_mask);
+        sigaddset(&proc_mask, SIGCHLD);
+        sigaddset(&proc_mask, SIGINT);
+        sigaddset(&proc_mask, SIGSTP);
+
+        /* Block {SIGCHLD, SIGINT, SIGSTP} with empty old blocking list */
+        sigprocmask(SIG_BLOCK, &proc_mask, NULL);
+        
+        //implement this
+    }
+    /* Built in command */
+    else
+    {
+        //implement this
+    }
+
     return;
 }
 
