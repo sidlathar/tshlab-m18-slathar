@@ -49,9 +49,6 @@ void sigtstp_handler(int sig);
 void sigint_handler(int sig);
 void sigquit_handler(int sig);
 
-/* Job list */
-struct job_t job_list[MAXLJOBS];
-
 /*
  * <Write main's function header documentation. What does main do?>
  * "Each function should be prefaced with a comment describing the purpose
@@ -157,6 +154,7 @@ void eval(const char *cmdline) {
 
     /* Parse command line */
     parse_result = parseline(cmdline, &token); 
+    sigset_t suspend_mask;
 
     /* Check for valid parse */
     if (parse_result == PARSELINE_ERROR || parse_result == PARSELINE_EMPTY) 
@@ -164,26 +162,173 @@ void eval(const char *cmdline) {
         return;
     }
     /* Not a builtin command */
-    else if(token -> builtin == BUILTIN_NONE)
+    else if(token.builtin == BUILTIN_NONE)
     {
         /* Make Blocking List from empty list*/
         sigset_t proc_mask;
+        pid_t pid;
+
         sigemptyset(&proc_mask);
         sigaddset(&proc_mask, SIGCHLD);
         sigaddset(&proc_mask, SIGINT);
-        sigaddset(&proc_mask, SIGSTP);
+        sigaddset(&proc_mask, SIGTSTP);
 
-        /* Block {SIGCHLD, SIGINT, SIGSTP} with empty old blocking list */
+        /* Block {SIGCHLD, SIGINT, SIGTSTP} with empty old blocking list before forking */
         sigprocmask(SIG_BLOCK, &proc_mask, NULL);
-        
-        //implement this
+
+        /* forking */
+        pid = fork();
+
+        /* parent process received child's pid */
+        if(pid > 0)
+        {
+            if(parse_result == PARSELINE_BG)
+            {
+                add_job(pid, BG, cmdline);
+            }
+            else
+            {
+                add_job(pid, FG, cmdline);
+            }
+
+            /* unblock {SIGCHLD, SIGINT, SIGTSTP} signals*/
+            sigprocmask(SIG_UNBLOCK, &proc_mask, NULL);
+
+            /* check for FG process and wait */
+            if(parse_result == PARSELINE_FG)
+            {
+                while(pid != 0)
+                {
+                    sigsuspend(&suspend_mask);
+                }
+                
+            }
+
+        }
+        /* successful fork */
+        else if(pid == 0)
+        {
+            /* unblock {SIGCHLD, SIGINT, SIGTSTP} signals*/
+            sigprocmask(SIG_UNBLOCK, &proc_mask, NULL);
+
+            /* put child process in new process group */
+            setpgid(0,0);
+
+            /* run */
+            if(execve(token.argv[0], &token.argv[1], environ) < 0)
+            {
+                return;
+            }
+        }
     }
     /* Built in command */
     else
     {
-        //implement this
-    }
+        struct job_t *built_in_job;
+        pid_t b_pid;
+        int b_jid;
+        //job_state st;
 
+        if(token.builtin == BUILTIN_QUIT)
+        {
+            exit(0);
+        }
+        else if(token.builtin == BUILTIN_JOBS)
+        {
+            list_jobs(STDOUT_FILENO);
+        }
+        /* check for valid pid or jid */
+        else if(token.builtin == BUILTIN_BG)
+        {
+            if(token.argv[1] == NULL)
+            {
+                return;
+            }
+            /* non NULL jid or pid */
+            else
+            {
+                /* JID start with '%' */
+                if(token.argv[1][0] == '%')
+                {
+                    /* convert to int */
+                    b_jid = atoi(&token.argv[1][1]);
+                    built_in_job = find_job_with_jid(b_jid);
+
+                    if(built_in_job != NULL)
+                    {
+                        b_pid = get_pid_of_job(built_in_job);
+                    }
+                    else
+                    {
+                        return;
+                    }
+                }
+                else
+                {
+                    b_pid = atoi(token.argv[1]);
+                    built_in_job = find_job_with_pid(b_pid);
+                }
+
+                if(built_in_job == NULL)
+                {
+                    return;
+                }
+                else
+                {
+                    kill(-b_pid, SIGCONT);
+
+                    //st = built_in_job -> state ;
+                    return;
+                }
+            }
+        }
+        else if(token.builtin == BUILTIN_FG)
+        {
+            if(token.argv[1] == NULL)
+            {
+                return;
+            }
+            /* non NULL jid or pid */
+            else
+            {
+                /* JID start with '%' */
+                if(token.argv[1][0] == '%')
+                {
+                    /* convert to int */
+                    b_jid = atoi(&token.argv[1][1]);
+                    built_in_job = find_job_with_jid(b_jid);
+
+                    if(built_in_job != NULL)
+                    {
+                        b_pid = get_pid_of_job(built_in_job);
+                    }
+                    else
+                    {
+                        return;
+                    }
+                }
+                else
+                {
+                    b_pid = atoi(token.argv[1]);
+                    built_in_job = find_job_with_pid(b_pid);
+                }
+
+                if(built_in_job == NULL)
+                {
+                    return;
+                }
+                else
+                {
+                    kill(-b_pid, SIGCONT);
+
+                    //built_in_job.state = FG;
+
+                    sigsuspend(&suspend_mask);
+                    return;
+                }
+            }
+        }
+    }
     return;
 }
 
