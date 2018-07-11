@@ -1,4 +1,4 @@
-
+/* Siddhanth Lathar slathar */
 /*
  * tsh - A tiny shell program with job control
  * <The line above is not a sufficient documentation.
@@ -50,11 +50,12 @@ void sigint_handler(int sig);
 void sigquit_handler(int sig);
 
 /*
- * <Write main's function header documentation. What does main do?>
- * "Each function should be prefaced with a comment describing the purpose
- *  of the function (in a sentence or two), the function's arguments and
- *  return value, any error cases that are relevant to the caller,
- *  any pertinent side effects, and any assumptions that the function makes."
+ * Takes command line arguments and does the following:
+ * redirects stderr to stdout, 
+ * handles verbose outputs and promts, 
+ * installs signal handlers, 
+ * initalizes job list,
+ * and then runs shells read/eval loop.
  */
 int main(int argc, char **argv) {
     char c;
@@ -146,7 +147,9 @@ int main(int argc, char **argv) {
  */
 
 /*
- * <What does eval do?>
+ * Handles whats to be done when. It takes cmdline from main() and divides
+ * the input into BUILTIN commands or FG, BG and handles them seperatley 
+ * displaying process info differently in each case & handles I/O redirection.
  */
 void eval(const char *cmdline) {
     parseline_return parse_result;
@@ -155,22 +158,23 @@ void eval(const char *cmdline) {
     /* Parse command line */
     parse_result = parseline(cmdline, &token); 
 
-    /* Make Blocking List from empty list*/
+    /* Make Blocking List from empty set*/
     sigset_t proc_mask, suspend_mask, temp;
     pid_t pid;
     int jid;
 
+    /* Handling I/O redirection */ 
     int in_file = 0;
     int out_file = 0;
 
     if(token.infile != NULL)
     {
-        in_file = open(token.infile, O_RDONLY, 0x700);
+        in_file = open(token.infile, O_RDONLY, 0);
         dup2(in_file, STDIN_FILENO);
     }
      if(token.outfile != NULL)
     {
-        out_file = open(token.outfile, O_WRONLY, 0x700);
+        out_file = open(token.outfile, O_RDWR | O_CREAT, 0);
         dup2(out_file, STDOUT_FILENO);
     }
 
@@ -182,12 +186,15 @@ void eval(const char *cmdline) {
     /* Not a builtin command */
     else if(token.builtin == BUILTIN_NONE)
     {
+        /* Add signals to block to the mask set */
         sigemptyset(&proc_mask);
         sigaddset(&proc_mask, SIGCHLD);
         sigaddset(&proc_mask, SIGINT);
         sigaddset(&proc_mask, SIGTSTP);
 
-        /* Block {SIGCHLD, SIGINT, SIGTSTP} with empty old blocking list before forking */
+        /* Block {SIGCHLD, SIGINT, SIGTSTP} with empty old blocking set 
+         * before forking
+         */
         sigprocmask(SIG_BLOCK, &proc_mask, &temp);
 
         /* forking */
@@ -200,11 +207,15 @@ void eval(const char *cmdline) {
             {
                 add_job(pid, BG, cmdline);
                 jid = find_jid_by_pid(pid);
+
+                /* output */
                 sio_printf("[%d] (%d) %s\n", jid, pid, cmdline);
             }
-            else
+            else /* FG process, wait to finish */
             {
                 add_job(pid, FG, cmdline);
+
+                /* empty mask for sigsuspend */
                 sigemptyset(&suspend_mask);
 
                 while(fg_pid() != 0)
@@ -237,22 +248,26 @@ void eval(const char *cmdline) {
     /* Built in command */
     else
     {
+        /* variables for buultin job */
         struct job_t *built_in_job;
         pid_t b_pid;
         int b_jid;
 
+        /* Add signals to block to the mask set */
         sigemptyset(&proc_mask);
         sigaddset(&proc_mask, SIGCHLD);
         sigaddset(&proc_mask, SIGINT);
         sigaddset(&proc_mask, SIGTSTP);
 
+        /* BULTIN QUIT*/
         if(token.builtin == BUILTIN_QUIT)
         {
             exit(0);
         }
+        /* BULTIN JOBS*/
         else if(token.builtin == BUILTIN_JOBS)
         {
-            /* Block {SIGCHLD, SIGINT, SIGTSTP} with empty old blocking list before forking */
+            /* Block {SIGCHLD, SIGINT, SIGTSTP} with empty old blocking set*/
             sigprocmask(SIG_BLOCK, &proc_mask, &temp);
 
             list_jobs(STDOUT_FILENO);
@@ -260,58 +275,68 @@ void eval(const char *cmdline) {
             /* unblock {SIGCHLD, SIGINT, SIGTSTP} signals*/
             sigprocmask(SIG_SETMASK, &temp, NULL);
         }
-        /* check for valid pid or jid */
+        /* BULTIN BG */
         else if(token.builtin == BUILTIN_BG)
         {
-            /* Block {SIGCHLD, SIGINT, SIGTSTP} with empty old blocking list before forking */
+            /* Block {SIGCHLD, SIGINT, SIGTSTP} with empty old blocking */
             sigprocmask(SIG_BLOCK, &proc_mask, &temp);
 
-            /* JID start with '%' */
+            /* JID is supplied. It starts with '%' */
             if(token.argv[1][0] == '%')
             {
-                /* convert to int */
+                /* convert argument to int */
                 b_jid = atoi(&token.argv[1][1]);
+
                 built_in_job = find_job_with_jid(b_jid);
-            
                 b_pid = get_pid_of_job(built_in_job);
             }
-            else
+            /* PID is supplied */
+            else 
             {
+                /* convert argument to int */
                 b_pid = atoi(token.argv[1]);
+
                 b_jid = find_jid_by_pid(b_pid);
                 built_in_job = find_job_with_pid(b_pid);
             }
-
+           
             kill(-b_pid, SIGCONT);
-            sio_printf("[%d] (%d) %s\n", b_jid, b_pid, get_cmdline_of_job(built_in_job));
             set_state_of_job(built_in_job, BG);
+
+            /* output */
+            sio_printf("[%d] (%d) %s\n", b_jid, b_pid, 
+                                            get_cmdline_of_job(built_in_job));
 
             /* unblock {SIGCHLD, SIGINT, SIGTSTP} signals*/
             sigprocmask(SIG_SETMASK, &temp, NULL);
         }
         else if(token.builtin == BUILTIN_FG)
         {
-            /* Block {SIGCHLD, SIGINT, SIGTSTP} with empty old blocking list before forking */
+            /* Block {SIGCHLD, SIGINT, SIGTSTP} with empty old blocking set */
             sigprocmask(SIG_BLOCK, &proc_mask, &temp);
 
-            /* JID start with '%' */
+            /* JID is supplied. It starts with '%' */
             if(token.argv[1][0] == '%')
             {
-                /* convert to int */
+                /* convert argument to int */
                 b_jid = atoi(&token.argv[1][1]);
-                built_in_job = find_job_with_jid(b_jid);
 
+                built_in_job = find_job_with_jid(b_jid);
                 b_pid = get_pid_of_job(built_in_job);
             }
             else
             {
+                /* convert argument to int */
                 b_pid = atoi(token.argv[1]);
+
                 built_in_job = find_job_with_pid(b_pid);
                 b_jid = find_jid_by_pid(b_pid);
             }
             
             kill(-b_pid, SIGCONT);
             set_state_of_job(built_in_job, FG);
+
+            /* empty mask for sugsuspend, wait for it to finish */
             sigemptyset(&suspend_mask);
 
             while(fg_pid() != 0)
@@ -331,7 +356,8 @@ void eval(const char *cmdline) {
  *****************/
 
 /*
- * <What does sigchld_handler do?>
+ * Handles SIGCHLD signal. Blocks SIGINT, SIGTSTP and outputs information
+ * about termination or stoppage of a process based on status from waitpid
  */
 void sigchld_handler(int sig) 
 {
@@ -339,23 +365,34 @@ void sigchld_handler(int sig)
     int status, jid;
     struct job_t *job;
 
+    /* add SIGINT, SIGSTP in mask set to block  */
     sigset_t proc_mask, temp;
     sigaddset(&proc_mask, SIGINT);
     sigaddset(&proc_mask, SIGTSTP);
 
+    /* BLOCK {SIGINT, SIGTSTP} */ 
     sigprocmask(SIG_BLOCK, &proc_mask, &temp);
-    while((pid = waitpid(-1, &status, WNOHANG|WUNTRACED)) > 0)
+
+    while((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0)
     {
+        /* Child prcess terminated */
         if(WIFSIGNALED(status))
         {
             jid = find_jid_by_pid(pid);
-            sio_printf("Job [%d] (%d) terminated by signal %d\n", jid, pid, WTERMSIG(status));
+            /* output */
+            sio_printf("Job [%d] (%d) terminated by signal %d\n", jid, pid, 
+                WTERMSIG(status));
+
             delete_job(pid);
         }
+        /* Child is stopped */
         else if(WIFSTOPPED(status))
         {
             jid = find_jid_by_pid(pid);
-            sio_printf("Job [%d] (%d) stopped by signal %d\n", jid, pid, WSTOPSIG(status));
+            /* output */
+            sio_printf("Job [%d] (%d) stopped by signal %d\n", jid, pid, 
+                WSTOPSIG(status));
+
             job = find_job_with_pid(pid);
             set_state_of_job(job, ST);
         }
@@ -364,22 +401,26 @@ void sigchld_handler(int sig)
             delete_job(pid);
         }
     }
+    /* UNBLOCK {SIGINT, SIGTSTP} */
     sigprocmask(SIG_SETMASK, &temp, NULL);
     return;
 }
 
 /*
- * <What does sigint_handler do?>
+ * Handles SIGINT signal by blocking {SIGCHLD, SIGINT, SIGTSTP} first and 
+ * sending SIGINT signal to the process
  */
 void sigint_handler(int sig) 
 {
     pid_t pid;
 
+    /* add SIGINT, SIGSTP, SIGCHLD in mask set to block */
     sigset_t proc_mask, temp;
     sigaddset(&proc_mask, SIGCHLD);
     sigaddset(&proc_mask, SIGINT);
     sigaddset(&proc_mask, SIGTSTP);
 
+    /* Block {SIGCHLD, SIGINT, SIGTSTP} with empty old blocking set */
     sigprocmask(SIG_BLOCK, &proc_mask, &temp);
 
     pid = fg_pid();
@@ -388,22 +429,26 @@ void sigint_handler(int sig)
         kill(-pid, sig);
     }
 
+    /* Unblock {SIGCHLD, SIGINT, SIGTSTP} */
     sigprocmask(SIG_SETMASK, &temp, NULL);
 
     return;
 }
 
 /*
- * <What does sigtstp_handler do?>
+ * Handles SIGINT signal by blocking {SIGCHLD, SIGINT, SIGTSTP} first and 
+ * sending SIGTSTP signal to the process
  */
 void sigtstp_handler(int sig) {
     pid_t pid;
 
+    /* add SIGINT, SIGSTP, SIGCHLD in mask set to block */
     sigset_t proc_mask, temp;
     sigaddset(&proc_mask, SIGCHLD);
     sigaddset(&proc_mask, SIGINT);
     sigaddset(&proc_mask, SIGTSTP);
 
+    /* Block {SIGCHLD, SIGINT, SIGTSTP} with empty old blocking set */
     sigprocmask(SIG_BLOCK, &proc_mask, &temp);
 
     pid = fg_pid();
@@ -412,6 +457,7 @@ void sigtstp_handler(int sig) {
         kill(-pid, sig);
     }
 
+    /* Unblock {SIGCHLD, SIGINT, SIGTSTP} */
     sigprocmask(SIG_SETMASK, &temp, NULL);
     
     return;
