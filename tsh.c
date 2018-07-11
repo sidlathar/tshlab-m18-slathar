@@ -167,13 +167,13 @@ void eval(const char *cmdline) {
     /* Not a builtin command */
     else if(token.builtin == BUILTIN_NONE)
     {
-        Sigemptyset(&proc_mask);
-        Sigaddset(&proc_mask, SIGCHLD);
-        Sigaddset(&proc_mask, SIGINT);
-        Sigaddset(&proc_mask, SIGTSTP);
+        sigemptyset(&proc_mask);
+        sigaddset(&proc_mask, SIGCHLD);
+        sigaddset(&proc_mask, SIGINT);
+        sigaddset(&proc_mask, SIGTSTP);
 
         /* Block {SIGCHLD, SIGINT, SIGTSTP} with empty old blocking list before forking */
-        Sigprocmask(SIG_BLOCK, &proc_mask, &temp);
+        sigprocmask(SIG_BLOCK, &proc_mask, &temp);
 
         /* forking */
         pid = fork();
@@ -183,37 +183,40 @@ void eval(const char *cmdline) {
         {
             if(parse_result == PARSELINE_BG)
             {
+                printf("dfeqv\n");
                 add_job(pid, BG, cmdline);
                 int jid = find_jid_by_pid(pid);
                 printf("[%d] (%d) %s\n", jid, pid, cmdline);
             }
             else
             {
+                printf("vvaevea\n");
                 add_job(pid, FG, cmdline);
-                Sigemptyset(&suspend_mask);
+                sigemptyset(&suspend_mask);
 
                 while(fg_pid() != 0)
                 {
-                    Sigsuspend(&suspend_mask);
+                    sigsuspend(&suspend_mask);
                 }
                 int jid = find_jid_by_pid(pid);
                 printf("[%d] (%d) %s\n", jid, pid, cmdline);
             }
 
             /* unblock {SIGCHLD, SIGINT, SIGTSTP} signals*/
-            Sigprocmask(SIG_SETMASK, &temp, NULL);
+            sigprocmask(SIG_SETMASK, &temp, NULL);
         }
         /* successful fork */
         else if(pid == 0)
         {
+            printf("vvaeveffea\n");
             /* unblock {SIGCHLD, SIGINT, SIGTSTP} signals*/
-            Sigprocmask(SIG_SETMASK, &temp, NULL);
+            sigprocmask(SIG_SETMASK, &temp, NULL);
 
             /* put child process in new process group */
             Setpgid(0,0);
 
             /* run */
-            if(execve(token.argv[0], &token.argv[1], environ) < 0)
+            if(execve(token.argv[0], &token.argv[0], environ) < 0)
             {
                 printf("%s: Command not found. \n", token.argv[0]);
                 return;
@@ -236,18 +239,18 @@ void eval(const char *cmdline) {
         else if(token.builtin == BUILTIN_JOBS)
         {
             /* Block {SIGCHLD, SIGINT, SIGTSTP} with empty old blocking list before forking */
-            Sigprocmask(SIG_BLOCK, &proc_mask, &temp);
+            sigprocmask(SIG_BLOCK, &proc_mask, &temp);
 
             list_jobs(STDOUT_FILENO);
 
             /* unblock {SIGCHLD, SIGINT, SIGTSTP} signals*/
-            Sigprocmask(SIG_SETMASK, &temp, NULL);
+            sigprocmask(SIG_SETMASK, &temp, NULL);
         }
         /* check for valid pid or jid */
         else if(token.builtin == BUILTIN_BG)
         {
             /* Block {SIGCHLD, SIGINT, SIGTSTP} with empty old blocking list before forking */
-            Sigprocmask(SIG_BLOCK, &proc_mask, &temp);
+            sigprocmask(SIG_BLOCK, &proc_mask, &temp);
 
             /* JID start with '%' */
             if(token.argv[1][0] == '%')
@@ -265,17 +268,17 @@ void eval(const char *cmdline) {
                 built_in_job = find_job_with_pid(b_pid);
             }
 
-            Kill(-b_pid, SIGCONT);
+            kill(-b_pid, SIGCONT);
             printf("[%d] (%d) %s\n", b_jid, b_pid, get_cmdline_of_job(built_in_job));
             set_state_of_job(built_in_job, BG);
 
             /* unblock {SIGCHLD, SIGINT, SIGTSTP} signals*/
-            Sigprocmask(SIG_SETMASK, &temp, NULL);
+            sigprocmask(SIG_SETMASK, &temp, NULL);
         }
         else if(token.builtin == BUILTIN_FG)
         {
             /* Block {SIGCHLD, SIGINT, SIGTSTP} with empty old blocking list before forking */
-            Sigprocmask(SIG_BLOCK, &proc_mask, &temp);
+            sigprocmask(SIG_BLOCK, &proc_mask, &temp);
 
             /* JID start with '%' */
             if(token.argv[1][0] == '%')
@@ -293,10 +296,10 @@ void eval(const char *cmdline) {
                 b_jid = find_jid_by_pid(b_pid);
             }
             
-            Kill(-b_pid, SIGCONT);
+            kill(-b_pid, SIGCONT);
             printf("[%d] (%d) %s\n", b_jid, b_pid, get_cmdline_of_job(built_in_job));
             set_state_of_job(built_in_job, FG);
-            Sigemptyset(&suspend_mask);
+            sigemptyset(&suspend_mask);
 
             while(fg_pid() != 0)
             {
@@ -304,7 +307,7 @@ void eval(const char *cmdline) {
             }
             
             /* unblock {SIGCHLD, SIGINT, SIGTSTP} signals*/
-            Sigprocmask(SIG_SETMASK, &temp, NULL);
+            sigprocmask(SIG_SETMASK, &temp, NULL);
         }
     }
     return;
