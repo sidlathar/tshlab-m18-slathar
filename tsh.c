@@ -158,6 +158,7 @@ void eval(const char *cmdline) {
     /* Make Blocking List from empty list*/
     sigset_t proc_mask, suspend_mask, temp;
     pid_t pid;
+    int jid;
 
     /* Check for valid parse */
     if (parse_result == PARSELINE_ERROR || parse_result == PARSELINE_EMPTY) 
@@ -183,14 +184,12 @@ void eval(const char *cmdline) {
         {
             if(parse_result == PARSELINE_BG)
             {
-                printf("dfeqv\n");
                 add_job(pid, BG, cmdline);
-                int jid = find_jid_by_pid(pid);
-                printf("[%d] (%d) %s\n", jid, pid, cmdline);
+                jid = find_jid_by_pid(pid);
+                sio_printf("[%d] (%d) %s\n", jid, pid, cmdline);
             }
             else
             {
-                printf("vvaevea\n");
                 add_job(pid, FG, cmdline);
                 sigemptyset(&suspend_mask);
 
@@ -198,8 +197,6 @@ void eval(const char *cmdline) {
                 {
                     sigsuspend(&suspend_mask);
                 }
-                int jid = find_jid_by_pid(pid);
-                printf("[%d] (%d) %s\n", jid, pid, cmdline);
             }
 
             /* unblock {SIGCHLD, SIGINT, SIGTSTP} signals*/
@@ -208,7 +205,6 @@ void eval(const char *cmdline) {
         /* successful fork */
         else if(pid == 0)
         {
-            printf("vvaeveffea\n");
             /* unblock {SIGCHLD, SIGINT, SIGTSTP} signals*/
             sigprocmask(SIG_SETMASK, &temp, NULL);
 
@@ -218,7 +214,7 @@ void eval(const char *cmdline) {
             /* run */
             if(execve(token.argv[0], &token.argv[0], environ) < 0)
             {
-                printf("%s: Command not found. \n", token.argv[0]);
+                sio_printf("%s: Command not found. \n", token.argv[0]);
                 return;
             }
             return;
@@ -230,7 +226,11 @@ void eval(const char *cmdline) {
         struct job_t *built_in_job;
         pid_t b_pid;
         int b_jid;
-        //job_state st;
+
+        sigemptyset(&proc_mask);
+        sigaddset(&proc_mask, SIGCHLD);
+        sigaddset(&proc_mask, SIGINT);
+        sigaddset(&proc_mask, SIGTSTP);
 
         if(token.builtin == BUILTIN_QUIT)
         {
@@ -269,7 +269,7 @@ void eval(const char *cmdline) {
             }
 
             kill(-b_pid, SIGCONT);
-            printf("[%d] (%d) %s\n", b_jid, b_pid, get_cmdline_of_job(built_in_job));
+            sio_printf("[%d] (%d) %s\n", b_jid, b_pid, get_cmdline_of_job(built_in_job));
             set_state_of_job(built_in_job, BG);
 
             /* unblock {SIGCHLD, SIGINT, SIGTSTP} signals*/
@@ -297,7 +297,7 @@ void eval(const char *cmdline) {
             }
             
             kill(-b_pid, SIGCONT);
-            printf("[%d] (%d) %s\n", b_jid, b_pid, get_cmdline_of_job(built_in_job));
+            sio_printf("[%d] (%d) %s\n", b_jid, b_pid, get_cmdline_of_job(built_in_job));
             set_state_of_job(built_in_job, FG);
             sigemptyset(&suspend_mask);
 
@@ -320,14 +320,64 @@ void eval(const char *cmdline) {
 /*
  * <What does sigchld_handler do?>
  */
-void sigchld_handler(int sig) {
+void sigchld_handler(int sig) 
+{
+    pid_t pid;
+    int status, jid;
+    struct job_t *job;
+
+    sigset_t proc_mask, temp;
+    sigaddset(&proc_mask, SIGINT);
+    sigaddset(&proc_mask, SIGTSTP);
+
+    sigprocmask(SIG_BLOCK, &proc_mask, &temp);
+    while((pid = waitpid(-1, &status, WNOHANG|WUNTRACED)) > 0)
+    {
+        if(WIFSIGNALED(status))
+        {
+            jid = find_jid_by_pid(pid);
+            sio_printf("Job [%d] (%d) terminated by signal %d\n", jid, pid, WTERMSIG(status));
+            delete_job(pid);
+        }
+        else if(WIFSTOPPED(status))
+        {
+            jid = find_jid_by_pid(pid);
+            sio_printf("Job [%d] (%d) stopped by signal %d\n", jid, pid, WSTOPSIG(status));
+
+            job = find_job_with_pid(pid);
+            set_state_of_job(job, ST);
+        }
+        else
+        {
+            delete_job(pid);
+        }
+    }
+    sigprocmask(SIG_SETMASK, &temp, NULL);
     return;
 }
 
 /*
  * <What does sigint_handler do?>
  */
-void sigint_handler(int sig) {
+void sigint_handler(int sig) 
+{
+    pid_t pid;
+
+    sigset_t proc_mask, temp;
+    sigaddset(&proc_mask, SIGCHLD);
+    sigaddset(&proc_mask, SIGINT);
+    sigaddset(&proc_mask, SIGTSTP);
+
+    sigprocmask(SIG_BLOCK, &proc_mask, &temp);
+
+    pid = fg_pid();
+    if(pid != 0)
+    {
+        kill(-pid, sig);
+    }
+
+    sigprocmask(SIG_SETMASK, &temp, NULL);
+
     return;
 }
 
@@ -335,6 +385,23 @@ void sigint_handler(int sig) {
  * <What does sigtstp_handler do?>
  */
 void sigtstp_handler(int sig) {
+    pid_t pid;
+
+    sigset_t proc_mask, temp;
+    sigaddset(&proc_mask, SIGCHLD);
+    sigaddset(&proc_mask, SIGINT);
+    sigaddset(&proc_mask, SIGTSTP);
+
+    sigprocmask(SIG_BLOCK, &proc_mask, &temp);
+
+    pid = fg_pid();
+    if(pid != 0)
+    {
+        kill(-pid, sig);
+    }
+
+    sigprocmask(SIG_SETMASK, &temp, NULL);
+    
     return;
 }
 
