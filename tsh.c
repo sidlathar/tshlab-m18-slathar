@@ -154,7 +154,10 @@ void eval(const char *cmdline) {
 
     /* Parse command line */
     parse_result = parseline(cmdline, &token); 
-    sigset_t suspend_mask;
+
+    /* Make Blocking List from empty list*/
+    sigset_t proc_mask, suspend_mask, temp;
+    pid_t pid;
 
     /* Check for valid parse */
     if (parse_result == PARSELINE_ERROR || parse_result == PARSELINE_EMPTY) 
@@ -164,17 +167,13 @@ void eval(const char *cmdline) {
     /* Not a builtin command */
     else if(token.builtin == BUILTIN_NONE)
     {
-        /* Make Blocking List from empty list*/
-        sigset_t proc_mask;
-        pid_t pid;
-
-        sigemptyset(&proc_mask);
-        sigaddset(&proc_mask, SIGCHLD);
-        sigaddset(&proc_mask, SIGINT);
-        sigaddset(&proc_mask, SIGTSTP);
+        Sigemptyset(&proc_mask);
+        Sigaddset(&proc_mask, SIGCHLD);
+        Sigaddset(&proc_mask, SIGINT);
+        Sigaddset(&proc_mask, SIGTSTP);
 
         /* Block {SIGCHLD, SIGINT, SIGTSTP} with empty old blocking list before forking */
-        sigprocmask(SIG_BLOCK, &proc_mask, NULL);
+        Sigprocmask(SIG_BLOCK, &proc_mask, &temp);
 
         /* forking */
         pid = fork();
@@ -185,40 +184,41 @@ void eval(const char *cmdline) {
             if(parse_result == PARSELINE_BG)
             {
                 add_job(pid, BG, cmdline);
+                int jid = find_jid_by_pid(pid);
+                printf("[%d] (%d) %s\n", jid, pid, cmdline);
             }
             else
             {
                 add_job(pid, FG, cmdline);
+                Sigemptyset(&suspend_mask);
+
+                while(fg_pid() != 0)
+                {
+                    Sigsuspend(&suspend_mask);
+                }
+                int jid = find_jid_by_pid(pid);
+                printf("[%d] (%d) %s\n", jid, pid, cmdline);
             }
 
             /* unblock {SIGCHLD, SIGINT, SIGTSTP} signals*/
-            sigprocmask(SIG_UNBLOCK, &proc_mask, NULL);
-
-            /* check for FG process and wait */
-            if(parse_result == PARSELINE_FG)
-            {
-                while(pid != 0)
-                {
-                    sigsuspend(&suspend_mask);
-                }
-                
-            }
-
+            Sigprocmask(SIG_SETMASK, &temp, NULL);
         }
         /* successful fork */
         else if(pid == 0)
         {
             /* unblock {SIGCHLD, SIGINT, SIGTSTP} signals*/
-            sigprocmask(SIG_UNBLOCK, &proc_mask, NULL);
+            Sigprocmask(SIG_SETMASK, &temp, NULL);
 
             /* put child process in new process group */
-            setpgid(0,0);
+            Setpgid(0,0);
 
             /* run */
             if(execve(token.argv[0], &token.argv[1], environ) < 0)
             {
+                printf("%s: Command not found. \n", token.argv[0]);
                 return;
             }
+            return;
         }
     }
     /* Built in command */
@@ -235,98 +235,76 @@ void eval(const char *cmdline) {
         }
         else if(token.builtin == BUILTIN_JOBS)
         {
+            /* Block {SIGCHLD, SIGINT, SIGTSTP} with empty old blocking list before forking */
+            Sigprocmask(SIG_BLOCK, &proc_mask, &temp);
+
             list_jobs(STDOUT_FILENO);
+
+            /* unblock {SIGCHLD, SIGINT, SIGTSTP} signals*/
+            Sigprocmask(SIG_SETMASK, &temp, NULL);
         }
         /* check for valid pid or jid */
         else if(token.builtin == BUILTIN_BG)
         {
-            if(token.argv[1] == NULL)
+            /* Block {SIGCHLD, SIGINT, SIGTSTP} with empty old blocking list before forking */
+            Sigprocmask(SIG_BLOCK, &proc_mask, &temp);
+
+            /* JID start with '%' */
+            if(token.argv[1][0] == '%')
             {
-                return;
+                /* convert to int */
+                b_jid = atoi(&token.argv[1][1]);
+                built_in_job = find_job_with_jid(b_jid);
+            
+                b_pid = get_pid_of_job(built_in_job);
             }
-            /* non NULL jid or pid */
             else
             {
-                /* JID start with '%' */
-                if(token.argv[1][0] == '%')
-                {
-                    /* convert to int */
-                    b_jid = atoi(&token.argv[1][1]);
-                    built_in_job = find_job_with_jid(b_jid);
-
-                    if(built_in_job != NULL)
-                    {
-                        b_pid = get_pid_of_job(built_in_job);
-                    }
-                    else
-                    {
-                        return;
-                    }
-                }
-                else
-                {
-                    b_pid = atoi(token.argv[1]);
-                    built_in_job = find_job_with_pid(b_pid);
-                }
-
-                if(built_in_job == NULL)
-                {
-                    return;
-                }
-                else
-                {
-                    kill(-b_pid, SIGCONT);
-
-                    //st = built_in_job -> state ;
-                    return;
-                }
+                b_pid = atoi(token.argv[1]);
+                b_jid = find_jid_by_pid(b_pid);
+                built_in_job = find_job_with_pid(b_pid);
             }
+
+            Kill(-b_pid, SIGCONT);
+            printf("[%d] (%d) %s\n", b_jid, b_pid, get_cmdline_of_job(built_in_job));
+            set_state_of_job(built_in_job, BG);
+
+            /* unblock {SIGCHLD, SIGINT, SIGTSTP} signals*/
+            Sigprocmask(SIG_SETMASK, &temp, NULL);
         }
         else if(token.builtin == BUILTIN_FG)
         {
-            if(token.argv[1] == NULL)
+            /* Block {SIGCHLD, SIGINT, SIGTSTP} with empty old blocking list before forking */
+            Sigprocmask(SIG_BLOCK, &proc_mask, &temp);
+
+            /* JID start with '%' */
+            if(token.argv[1][0] == '%')
             {
-                return;
+                /* convert to int */
+                b_jid = atoi(&token.argv[1][1]);
+                built_in_job = find_job_with_jid(b_jid);
+
+                b_pid = get_pid_of_job(built_in_job);
             }
-            /* non NULL jid or pid */
             else
             {
-                /* JID start with '%' */
-                if(token.argv[1][0] == '%')
-                {
-                    /* convert to int */
-                    b_jid = atoi(&token.argv[1][1]);
-                    built_in_job = find_job_with_jid(b_jid);
-
-                    if(built_in_job != NULL)
-                    {
-                        b_pid = get_pid_of_job(built_in_job);
-                    }
-                    else
-                    {
-                        return;
-                    }
-                }
-                else
-                {
-                    b_pid = atoi(token.argv[1]);
-                    built_in_job = find_job_with_pid(b_pid);
-                }
-
-                if(built_in_job == NULL)
-                {
-                    return;
-                }
-                else
-                {
-                    kill(-b_pid, SIGCONT);
-
-                    //built_in_job.state = FG;
-
-                    sigsuspend(&suspend_mask);
-                    return;
-                }
+                b_pid = atoi(token.argv[1]);
+                built_in_job = find_job_with_pid(b_pid);
+                b_jid = find_jid_by_pid(b_pid);
             }
+            
+            Kill(-b_pid, SIGCONT);
+            printf("[%d] (%d) %s\n", b_jid, b_pid, get_cmdline_of_job(built_in_job));
+            set_state_of_job(built_in_job, FG);
+            Sigemptyset(&suspend_mask);
+
+            while(fg_pid() != 0)
+            {
+                Sigsuspend(&suspend_mask);
+            }
+            
+            /* unblock {SIGCHLD, SIGINT, SIGTSTP} signals*/
+            Sigprocmask(SIG_SETMASK, &temp, NULL);
         }
     }
     return;
