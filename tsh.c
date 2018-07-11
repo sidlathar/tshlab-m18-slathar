@@ -297,7 +297,6 @@ void eval(const char *cmdline) {
             }
             
             kill(-b_pid, SIGCONT);
-            sio_printf("[%d] (%d) %s\n", b_jid, b_pid, get_cmdline_of_job(built_in_job));
             set_state_of_job(built_in_job, FG);
             sigemptyset(&suspend_mask);
 
@@ -343,7 +342,6 @@ void sigchld_handler(int sig)
         {
             jid = find_jid_by_pid(pid);
             sio_printf("Job [%d] (%d) stopped by signal %d\n", jid, pid, WSTOPSIG(status));
-
             job = find_job_with_pid(pid);
             set_state_of_job(job, ST);
         }
