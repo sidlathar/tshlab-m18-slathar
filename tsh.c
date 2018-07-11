@@ -160,6 +160,20 @@ void eval(const char *cmdline) {
     pid_t pid;
     int jid;
 
+    int in_file = 0;
+    int out_file = 0;
+
+    if(token.infile != NULL)
+    {
+        in_file = open(token.infile, O_RDONLY, 0x700);
+        dup2(in_file, STDIN_FILENO);
+    }
+     if(token.outfile != NULL)
+    {
+        out_file = open(token.outfile, O_WRONLY, 0x700);
+        dup2(out_file, STDOUT_FILENO);
+    }
+
     /* Check for valid parse */
     if (parse_result == PARSELINE_ERROR || parse_result == PARSELINE_EMPTY) 
     {
